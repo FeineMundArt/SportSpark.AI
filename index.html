@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportSpark.ai: KI Sportbild-Generator</title>
+    <link rel="stylesheet" href="index.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/client": "https://esm.sh/react-dom@^19.1.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@^1.8.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import { GoogleGenAI } from '@google/genai';
+
+// --- ANLEITUNG: Stripe Payment Links hier einfügen ---
+// 1. Erstellen Sie Ihre Links im Stripe Dashboard (unter Zahlungen > Payment Links).
+// 2. Kopieren Sie die Links und fügen Sie sie als Ersatz für die Platzhalter unten ein.
+const STRIPE_PAYMENT_LINKS = {
+    weekly: 'https://buy.stripe.com/bJedRa3y5eKOcVN05Fbsc00',      // z.B. 'https://buy.stripe.com/123...'
+    monthly: 'https://buy.stripe.com/5kQ00kb0x3261d52dNbsc03',     // z.B. 'https://buy.stripe.com/456...'
+    'half-yearly': 'https://buy.stripe.com/14A00k7Ol1Y21d59Gfbsc02' // z.B. 'https://buy.stripe.com/789...'
+};
+// ---------------------------------------------------
+
+
+// --- Start of inlined translations ---
+
+const ImprintContent = ({ t }) => (
+  <>
+    <p><strong>{t.imprint.serviceProvider}</strong><br />FeineMundArt<br />Brehmweg 9<br />30926 Seelze<br />Deutschland</p>
+    <p><strong>{t.imprint.contact}</strong><br />{t.imprint.contactDetails}</p>
+    <h4>{t.imprint.liabilityForContentTitle}</h4>
+    <p>{t.imprint.liabilityForContentText}</p>
+    <h4>{t.imprint.liabilityForLinksTitle}</h4>
+    <p>{t.imprint.liabilityForLinksText}</p>
+    <h4>{t.imprint.copyrightTitle}</h4>
+    <p>{t.imprint.copyrightText}</p>
+    <p><i>{t.imprint.source}</i></p>
+  </>
+);
+ImprintContent.displayName = 'ImprintContent';
+
+const PrivacyContent = ({ t }) => (
+  <>
+    <p><strong>{t.privacy.responsiblePartyTitle}</strong><br />FeineMundArt, Brehmweg 9, 30926 Seelze</p>
+    <h4>{t.privacy.generalInfoTitle}</h4>
+    <p>{t.privacy.generalInfoText1}</p>
+    <p>{t.privacy.generalInfoText2}</p>
+    <h4>{t.privacy.dataCollectionTitle}</h4>
+    <p><strong>{t.privacy.cookiesTitle}:</strong> {t.privacy.cookiesText}</p>
+    <p><strong>{t.privacy.serverLogFilesTitle}:</strong> {t.privacy.serverLogFilesText}</p>
+    <h4>{t.privacy.yourRightsTitle}</h4>
+    <p>{t.privacy.yourRightsText}</p>
+  </>
+);
+PrivacyContent.displayName = 'PrivacyContent';
+
+const dePlanNames = {
+    free: 'Kostenlos',
+    weekly: 'Wöchentlich',
+    monthly: 'Monatlich',
+    'half-yearly': 'Halbjährlich'
+};
+
+const deTranslations = {
+    appTitle: 'SportSpark.ai',
+    appSubtitle: 'Zünde die Begeisterung. Deine Sportgrafik in Sekunden.',
+    languageSelectorLabel: 'Sprache auswählen',
+    welcomeBack: 'Willkommen zurück!',
+    status: 'Status:',
+    planNames: dePlanNames,
+    generationsLeft: (rem, total) => `Noch ${rem} von ${total} Bildern übrig.`,
+    quotaResets: (plan) => `Ihr Kontingent wird ${plan === 'weekly' ? 'wöchentlich' : 'monatlich'} zurückgesetzt.`,
+    unlimitedGenerations: 'Sie haben unbegrenzte Generationen!',
+    logout: 'Ausloggen',
+    loginTitle: 'Anmelden',
+    loginPrompt: 'Geben Sie Ihre E-Mail-Adresse ein, um Ihren Pro-Status wiederherzustellen.',
+    loginButton: 'Anmelden',
+    loginError: 'E-Mail nicht gefunden. Bitte versuchen Sie es erneut.',
+    alreadyAccount: 'Bereits ein Konto?',
+    loginHere: 'Hier anmelden',
+    upgradeToPro: 'Upgrade auf Pro',
+    freeGenerationsLeft: (rem, total) => `Noch ${rem} von ${total} kostenlosen Generationen übrig.`,
+    freeQuotaUsed: 'Kostenloses Kontingent aufgebraucht.',
+    upgradeFeatures: [
+        'Mehr Bilder & höhere Auflösung',
+        'Keine Wasserzeichen',
+        'Alle Bildtypen (Ankündigung, Header etc.)',
+        'Content-Pakete (Social Media & Audio)',
+        'Vorlagen speichern',
+    ],
+    popular: 'Beliebt',
+    imagesPerWeek: (n) => `${n} Bilder / Woche`,
+    imagesPerMonth: (n) => `${n} Bilder / Monat`,
+    unlimitedImages: 'Unbegrenzte Bilder',
+    select: 'Auswählen',
+    vatIncluded: 'inkl. MwSt.',
+    step1: '1. Bild anpassen & beschreiben',
+    promptPlaceholderImage: "z.B. Ein Fußballspieler, der einen Fallrückzieher macht, Stadionlichter im Hintergrund.",
+    promptPlaceholderHeader: "z.B. Heroisches Bild eines Mountainbikers auf einem Gipfel, mit Platz für Text und Logo.",
+    promptPlaceholderLogo: "z.B. Ein minimalistisches Logo für einen Laufverein, Buchstabe 'R'.",
+    promptPlaceholderAnnouncement: "z.B. Dramatische Szene vor einem Derby, Flutlicht, regennasser Rasen.",
+    promptLabel: 'Bildbeschreibung',
+    step2: '2. Logo hochladen (optional)',
+    selectLogo: 'Logo auswählen',
+    logoPreviewAlt: 'Logo Vorschau',
+    removeLogoLabel: 'Logo entfernen',
+    generateButton: 'Bilder generieren',
+    loadingLabel: 'Laden...',
+    placeholderText: 'Ihre generierten Bilder werden hier angezeigt.',
+    generatedImageAlt: 'Generiertes Bild',
+    downloadButton: 'Herunterladen',
+    upgradeToUnlockFeatures: 'Upgrade auf Pro, um diese Funktion zu nutzen',
+    imprintTitle: 'Impressum',
+    privacyTitle: 'Datenschutz',
+    supportTitle: 'Support',
+    upgradeAlert: (plan) => `Zahlung erfolgreich! Sie haben das ${dePlanNames[plan]}-Abo ausgewählt. Bitte melden Sie sich an, um Ihren Pro-Status zu aktivieren.`,
+    errorApiKeyNeeded: 'API-Schlüssel ist nicht konfiguriert oder ungültig.',
+    errorSelectImageFile: 'Bitte wählen Sie eine Bilddatei aus (PNG, JPG, etc.).',
+    errorReadFile: 'Fehler beim Lesen der Datei.',
+    errorEnterDescription: 'Bitte geben Sie eine Beschreibung ein.',
+    errorQuotaExceeded: 'Ihr Kontingent ist aufgebraucht. Bitte wählen Sie einen neuen Plan oder warten Sie auf die nächste Periode.',
+    errorCouldNotGenerate: 'Konnte kein Bild generieren. Bitte versuchen Sie es erneut.',
+    errorGeneralPrefix: 'Ein Fehler ist aufgetreten: ',
+    errorUnknown: 'Unbekannter Fehler. Bitte versuchen Sie es später erneut.',
+    loadingCheckDescription: 'Überprüfe Beschreibung...',
+    loadingGenerateImages: 'Generiere Bilder...',
+    newsletterOptIn: 'Ich möchte gelegentlich Neuigkeiten per E-Mail erhalten (kein Spam).',
+    imageTypeImage: 'Bild',
+    imageTypeAnnouncement: 'Spielankündigung',
+    imageTypeHeader: 'Homepagebilder',
+    imageTypeLogo: 'Aufkleber / Logo',
+    aspectRatioLabel: 'Seitenverhältnis',
+    aspectRatioSquare: '1:1 (Quadratisch)',
+    aspectRatioWide: '16:9 (Breitbild)',
+    aspectRatioStory: '9:16 (Story)',
+    aspectRatioLandscape: '4:3 (Querformat)',
+    aspectRatioPortrait: '3:4 (Hochformat)',
+    allRightsReserved: 'Alle Rechte vorbehalten.',
+    imagePreviewTitle: 'Bildvorschau',
+    imagePreviewAlt: 'Vergrößerte Vorschau des generierten Bildes',
+    referencesTitle: 'Partner und Sponsoren',
+    becomeSponsor: 'Sponsor / Werbepartner werden',
+    refineText: 'Tipp: Verfeinere deine Beschreibung links für andere Ergebnisse!',
+    clickForPreview: 'Klick für Vorschau',
+    previewHeaderTitle: 'Deine Webseite',
+    previewLogoNote: 'Vorschau auf einem Produkt',
+    previewAnncTitle: 'HEIMSPIEL',
+    previewAnncMatch: 'Team A vs. Team B',
+    previewAnncInfo: 'SA, 15:30 UHR',
+    saveTemplate: 'Vorlage speichern',
+    myTemplatesTitle: 'Meine Vorlagen',
+    templateNameRequest: 'Geben Sie einen Namen für diese Vorlage ein:',
+    deleteTemplate: 'Vorlage löschen',
+    noTemplatesSaved: 'Sie haben noch keine Vorlagen gespeichert.',
+    saveTemplateProFeature: 'Das Speichern von Vorlagen ist eine Pro-Funktion.',
+    legalDisclaimer: 'Wir übernehmen keine Haftung für die generierten Inhalte. Die Erstellung von rechtswidrigen Inhalten, insbesondere Darstellungen von Kindesmissbrauch, ist strengstens verboten und wird zur Anzeige gebracht.',
+    resultsTitle: 'Ihre Ergebnisse',
+    finalPromptLabel: 'Verwendeter Befehl:',
+    generatePostText: 'Social-Media-Post erstellen',
+    generateAudioCommentary: 'Audio hinzufügen/bearbeiten',
+    postModalTitle: 'Social-Media-Post',
+    copyToClipboard: 'Kopieren',
+    copied: 'Kopiert!',
+    audioFromScript: "Nutzen Sie diesen KI-generierten Text als Skript für Ihre Aufnahme:",
+    generateAiText: 'Neues Skript erstellen',
+    audioGenerationError: 'Fehler bei der Erstellung des Text-Skripts.',
+    uploadAudio: 'Audio-Datei hochladen',
+    recordAudio: 'Audio aufnehmen',
+    stopRecording: 'Aufnahme stoppen',
+    recording: 'Aufnahme läuft...',
+    recordingOr: 'oder',
+    uploadedAudioLabel: 'Ihr Kommentar:',
+    removeUploadedAudio: 'Entfernen',
+    micPermissionDenied: 'Zugriff auf das Mikrofon verweigert. Bitte erlauben Sie den Zugriff in Ihren Browsereinstellungen.',
+    upgradeModalTitle: 'Funktion freischalten',
+    proFeature: 'Pro-Funktion',
+    upgradeModalBody: (featureName) => `Die Funktion "${featureName}" ist exklusiv für Pro-Nutzer. Holen Sie sich die Pro-version, um sie zu nutzen und Bilder ohne Wasserzeichen in voller Qualität herunterzuladen.`,
+    upgradeModalSubtext: 'Mit Pro erhalten Sie außerdem mehr Bilder, alle Bildtypen und exklusive Content-Tools.',
+    upgradeModalButtonText: 'Jetzt Pro werden',
+    imprint: { serviceProvider: 'Dienstanbieter', contact: 'Kontakt', contactDetails: 'E-Mail: thomas.naujokat@feinemundart.com', liabilityForContentTitle: 'Haftung für Inhalte', liabilityForContentText: 'Als Diensteanbieter sind wir gemäß § 7 Abs.1 TMG für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach §§ 8 bis 10 TMG sind wir als Diensteanbieter jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen zu überwachen oder nach Umständen zu forschen, die auf eine rechtswidrige Tätigkeit hinweisen.', liabilityForLinksTitle: 'Haftung für Links', liabilityForLinksText: 'Unser Angebot enthält Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Deshalb können wir für diese fremden Inhalte auch keine Gewähr übernehmen. Für die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber der Seiten verantwortlich.', copyrightTitle: 'Urheberrecht', copyrightText: 'Die durch die Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen dem deutschen Urheberrecht. Die Vervielfältigung, Bearbeitung, Verbreitung und jede Art der Verwertung außerhalb der Grenzen des Urheberrechtes bedürfen der schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers.', source: 'Impressum erstellt mit dem Impressum-Generator von e-recht24.de', },
+    privacy: { responsiblePartyTitle: 'Verantwortliche Stelle', generalInfoTitle: 'Allgemeiner Hinweis und Pflichtinformationen', generalInfoText1: 'Die Betreiber dieser Seiten nehmen den Schutz Ihrer persönlichen Daten sehr ernst. Wir behandeln Ihre personenbezogenen Daten vertraulich und entsprechend der gesetzlichen Datenschutzvorschriften sowie dieser Datenschutzerklärung.', generalInfoText2: 'Wenn Sie diese Website benutzen, werden verschiedene personenbezogene Daten erhoben. Personenbezogene Daten sind Daten, mit denen Sie persönlich identifiziert werden können. Die vorliegende Datenschutzerklärung erläutert, welche Daten wir erheben und wofür wir sie nutzen. Sie erläutert auch, wie und zu welchem Zweck das geschieht.', dataCollectionTitle: 'Datenerfassung auf dieser Website', cookiesTitle: 'Cookies', cookiesText: 'Unsere Internetseiten verwenden so genannte „Cookies“. Cookies sind kleine Textdateien und richten auf Ihrem Endgerät keinen Schaden an. Sie werden entweder vorübergehend für die Dauer einer Sitzung (Session-Cookies) oder dauerhaft (permanente Cookies) auf Ihrem Endgerät gespeichert.', serverLogFilesTitle: 'Server-Log-Dateien', serverLogFilesText: 'Der Provider der Seiten erhebt und speichert automatisch Informationen in so genannten Server-Log-Dateien, die Ihr Browser automatisch an uns übermittelt. Dies sind: Browsertyp und Browserversion, verwendetes Betriebssystem, Referrer URL, Hostname des zugreifenden Rechners, Uhrzeit der Serveranfrage, IP-Adresse. Eine Zusammenführung dieser Daten mit anderen Datenquellen wird nicht vorgenommen.', yourRightsTitle: 'Ihre Rechte als Betroffener', yourRightsText: 'Sie haben im Rahmen der geltenden gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche Auskunft über Ihre gespeicherten personenbezogenen Daten, deren Herkunft und Empfänger und den Zweck der Datenverarbeitung und ggf. ein Recht auf Berichtigung oder Löschung dieser Daten.', },
+};
+
+const enPlanNames = { free: 'Free', weekly: 'Weekly', monthly: 'Monthly', 'half-yearly': 'Semi-Annually' };
+
+const enTranslations = {
+    ...deTranslations, 
+    appTitle: 'SportSpark.ai',
+    appSubtitle: 'Ignite the passion. Your sports graphics in seconds.',
+    languageSelectorLabel: 'Select Language',
+    welcomeBack: 'Welcome Back!',
+    planNames: enPlanNames,
+    generationsLeft: (rem, total) => `${rem} of ${total} images remaining.`,
+    quotaResets: (plan) => `Your quota resets ${plan === 'weekly' ? 'weekly' : 'monthly'}.`,
+    unlimitedGenerations: 'You have unlimited generations!',
+    logout: 'Log Out',
+    loginTitle: 'Log In',
+    loginPrompt: 'Enter your email address to restore your Pro status.',
+    loginButton: 'Log In',
+    loginError: 'Email not found. Please try again.',
+    alreadyAccount: 'Already have an account?',
+    loginHere: 'Log in here',
+    upgradeToPro: 'Upgrade to Pro',
+    freeGenerationsLeft: (rem, total) => `${rem} of ${total} free generations left.`,
+    freeQuotaUsed: 'Free quota exhausted.',
+    upgradeFeatures: [
+        'More images & higher resolution',
+        'No watermarks',
+        'All image types (Announcement, Header etc.)',
+        'Content packages (Social Media & Audio)',
+        'Save templates',
+    ],
+    popular: 'Popular',
+    imagesPerWeek: (n) => `${n} images / week`,
+    imagesPerMonth: (n) => `${n} images / month`,
+    unlimitedImages: 'Unlimited Images',
+    select: 'Select',
+    vatIncluded: 'incl. VAT',
+    step1: '1. Customize & Describe Image',
+    promptPlaceholderImage: "e.g. A soccer player doing a bicycle kick, stadium lights in the background.",
+    promptPlaceholderHeader: "e.g. Heroic shot of a mountain biker on a summit, with space for text and a logo.",
+    promptPlaceholderLogo: "e.g. A minimalist logo for a running club, letter 'R'.",
+    promptPlaceholderAnnouncement: "e.g. Dramatic scene before a derby, floodlights, rain-soaked pitch.",
+    promptLabel: 'Image description',
+    step2: '2. Upload logo (optional)',
+    selectLogo: 'Select Logo',
+    logoPreviewAlt: 'Logo preview',
+    removeLogoLabel: 'Remove logo',
+    generateButton: 'Generate Images',
+    loadingLabel: 'Loading...',
+    placeholderText: 'Your generated images will be displayed here.',
+    generatedImageAlt: 'Generated image',
+    downloadButton: 'Download',
+    upgradeToUnlockFeatures: 'Upgrade to Pro to use this feature',
+    imprintTitle: 'Legal Notice',
+    privacyTitle: 'Privacy Policy',
+    supportTitle: 'Support',
+    upgradeAlert: (plan) => `Payment successful! You've selected the ${enPlanNames[plan]} plan. Please log in to activate your Pro status.`,
+    errorApiKeyNeeded: 'API key is not configured or invalid.',
+    errorSelectImageFile: 'Please select an image file (PNG, JPG, etc.).',
+    errorReadFile: 'Error reading the file.',
+    errorEnterDescription: 'Please enter a description.',
+    errorQuotaExceeded: 'Your quota is exhausted. Please choose a new plan or wait for the next period.',
+    errorCouldNotGenerate: 'Could not generate an image. Please try again.',
+    errorGeneralPrefix: 'An error occurred: ',
+    errorUnknown: 'Unknown error. Please try again later.',
+    newsletterOptIn: 'I would like to receive occasional news by email (no spam).',
+    imageTypeAnnouncement: 'Match Announcement',
+    imageTypeHeader: 'Homepage Pictures',
+    imageTypeLogo: 'Sticker / Logo',
+    allRightsReserved: 'All rights reserved.',
+    referencesTitle: 'Partners and Sponsors',
+    becomeSponsor: 'Become a Sponsor / Partner',
+    refineText: 'Hint: Refine your description on the left for different results!',
+    clickForPreview: 'Click for Preview',
+    previewHeaderTitle: 'Your Website',
+    previewLogoNote: 'Preview on a product',
+    previewAnncTitle: 'HOME GAME',
+    previewAnncMatch: 'Team A vs. Team B',
+    previewAnncInfo: 'SAT, 3:30 PM',
+    saveTemplate: 'Save Template',
+    myTemplatesTitle: 'My Templates',
+    templateNameRequest: 'Enter a name for this template:',
+    deleteTemplate: 'Delete template',
+    noTemplatesSaved: 'You have no saved templates yet.',
+    saveTemplateProFeature: 'Saving templates is a Pro feature.',
+    legalDisclaimer: 'We assume no liability for the generated content. The creation of illegal content, particularly depictions of child abuse, is strictly prohibited and will be reported to the authorities.',
+    resultsTitle: 'Your Results',
+    finalPromptLabel: 'Generated Prompt:',
+    generatePostText: 'Generate Social Media Post',
+    generateAudioCommentary: 'Add/Edit Audio',
+    postModalTitle: 'Social Media Post',
+    copyToClipboard: 'Copy',
+    copied: 'Copied!',
+    audioFromScript: "Use this AI-generated text as a script for your recording:",
+    generateAiText: 'Generate New Script',
+    audioGenerationError: 'Error generating text script.',
+    uploadAudio: 'Upload Audio File',
+    recordAudio: 'Record Audio',
+    stopRecording: 'Stop Recording',
+    recording: 'Recording...',
+    recordingOr: 'or',
+    uploadedAudioLabel: 'Your Commentary:',
+    removeUploadedAudio: 'Remove',
+    micPermissionDenied: 'Microphone access denied. Please enable it in your browser settings.',
+    upgradeModalTitle: 'Unlock Feature',
+    proFeature: 'Pro Feature',
+    upgradeModalBody: (featureName) => `The feature "${featureName}" is exclusive to Pro users. Get the Pro version to use it and to download images in full quality without watermarks.`,
+    upgradeModalSubtext: 'With Pro, you also get more images, all image types, and exclusive content tools.',
+    upgradeModalButtonText: 'Go Pro Now',
+};
+
+const languageNameMap = {
+    de: 'German',
+    en: 'English',
+    es: 'Spanish',
+    fr: 'French',
+    pl: 'Polish',
+    tr: 'Turkish',
+    it: 'Italian',
+    ja: 'Japanese',
+    zh: 'Chinese',
+};
+
+const translations = {
+  de: deTranslations,
+  en: enTranslations,
+  es: { ...enTranslations, /* Add Spanish-specific overrides */ },
+  fr: { ...enTranslations, /* Add French-specific overrides */ },
+  pl: { ...enTranslations, /* Add Polish-specific overrides */ },
+  tr: { ...enTranslations, /* Add Turkish-specific overrides */ },
+  it: { ...enTranslations, /* Add Italian-specific overrides */ },
+  ja: { ...enTranslations, /* Add Japanese-specific overrides */ },
+  zh: { ...enTranslations, /* Add Chinese-specific overrides */ },
+};
+
+// --- End of inlined translations ---
+
+
+const lohnderScLogo = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48cGF0aCBkPSJNNjAgMTVoODBsNDUgNDV2ODBsLTQ1IDQ1SDYwbC00NS00NVY2MGw0NS00NXoiIGZpbGw9IiNmZjAiIHN0cm9rZT0iIzAwZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iYm9sZCIgZm9udC1zdHlsZT0iaXRhbGljIiBmaWxsPSIjMDBmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj48dHNwYW4geD0iMTAwIiB5PSI3NSIgZm9udC1zaXplPSIzMCI+TE9ITkRFUjwvdHNwYW4+PHRzcGFuIHg9IjEwMCIgeT0iMTE1IiBmb250LXNpemU9IjM1Ij5TQzwvdHNwYW4+PHRzcGFuIHg9IjEwMCIgeT0iMTU1IiBmb250LXNpemU9IjMwIj4xOTk2PC90c3Bhbj48L3RleHQ+PC9zdmc+';
+
+const RecordIcon = React.memo(() => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>));
+RecordIcon.displayName = 'RecordIcon';
+
+const StopIcon = React.memo(() => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>));
+StopIcon.displayName = 'StopIcon';
+
+
+const Modal = React.memo(({ isOpen, onClose, title, children, customClass = '' }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className={`modal-content ${customClass}`} onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h2>{title}</h2>
+                    <button className="modal-close-button" onClick={onClose} aria-label="Close modal">&times;</button>
+                </div>
+                <div className="modal-body">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+});
+Modal.displayName = 'Modal';
+
+
+const SparkleIcon = React.memo(() => (
+    <svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" className="placeholder-icon">
+        <path d="M12 2L14.1213 6.87868L19 9L14.1213 11.1213L12 16L9.87868 11.1213L5 9L9.87868 6.87868L12 2Z" />
+        <path d="M19 18L19.7071 16.2929L21.4142 15.5858L19.7071 14.8787L19 13L18.2929 14.8787L16.5858 15.5858L18.2929 16.2929L19 18Z" />
+        <path d="M5 6L5.70711 4.29289L7.41421 3.58579L5.70711 2.87868L5 1L4.29289 2.87868L2.58579 3.58579L4.29289 4.29289L5 6Z" />
+    </svg>
+));
+SparkleIcon.displayName = 'SparkleIcon';
+
+const TextIcon = React.memo(() => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM16 18H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>));
+TextIcon.displayName = 'TextIcon';
+
+const AudioIcon = React.memo(() => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>));
+AudioIcon.displayName = 'AudioIcon';
+
+const CopyIcon = React.memo(() => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>));
+CopyIcon.displayName = 'CopyIcon';
+
+
+const EnhancedPreviewModal = React.memo(({ imageUrl, imageType, onClose, t }) => {
+    if (!imageUrl) return null;
+
+    const renderPreview = () => {
+        switch (imageType) {
+            case 'announcement':
+                return (
+                    <div className="mockup-announcement">
+                        <img src={imageUrl} alt={t.imagePreviewAlt} className="mockup-announcement-bg" />
+                        <div className="mockup-announcement-overlay">
+                            <div className="mockup-announcement-header">{t.previewAnncTitle}</div>
+                            <div className="mockup-announcement-teams">{t.previewAnncMatch}</div>
+                            <div className="mockup-announcement-info">{t.previewAnncInfo}</div>
+                        </div>
+                    </div>
+                );
+            case 'header':
+                return (
+                    <div className="mockup-browser">
+                        <div className="mockup-browser-header">
+                            <div className="dots"><span /><span /><span /></div>
+                            <div className="url-bar">{`https://${t.previewHeaderTitle.toLowerCase().replace(/\s/g, '-')}.com`}</div>
+                        </div>
+                        <div className="mockup-browser-body">
+                            <img src={imageUrl} alt={t.imagePreviewAlt} />
+                        </div>
+                    </div>
+                );
+            case 'logo':
+                return (
+                    <div className="mockup-tshirt-container">
+                        <div className="mockup-tshirt">
+                             <div className="tshirt-graphic">
+                                <img src={imageUrl} alt={t.imagePreviewAlt} />
+                            </div>
+                        </div>
+                        <p className="mockup-note">{t.previewLogoNote}</p>
+                    </div>
+                );
+            case 'image':
+            default:
+                return <img src={imageUrl} alt={t.imagePreviewAlt} className="preview-image-default" />;
+        }
+    };
+
+    return (
+        <div className="modal-overlay enhanced-preview-modal" onClick={onClose}>
+            <div className="modal-content enhanced-preview-modal-content" onClick={(e) => e.stopPropagation()}>
+                {renderPreview()}
+                <button className="modal-close-button" onClick={onClose}>&times;</button>
+            </div>
+        </div>
+    );
+});
+EnhancedPreviewModal.displayName = 'EnhancedPreviewModal';
+
+const PLAN_LIMITS = { free: 3, weekly: 30, monthly: 100, 'half-yearly': Infinity };
+
+const App = () => {
+  const [language, setLanguage] = useState('de');
+  const [prompt, setPrompt] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [generatedImages, setGeneratedImages] = useState(null);
+  const [error, setError] = useState(null);
+  const [logoImage, setLogoImage] = useState(null);
+  const [logoFileName, setLogoFileName] = useState(null);
+  const [userStatus, setUserStatus] = useState({ plan: 'free', generationsUsed: 0, newsletterOptIn: false });
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isImprintModalOpen, setIsImprintModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginError, setLoginError] = useState(null);
+  const [imageType, setImageType] = useState('image');
+  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [titleClickCount, setTitleClickCount] = useState(0);
+  const [generationContext, setGenerationContext] = useState(null);
+  const [enhancedPreviewUrl, setEnhancedPreviewUrl] = useState(null);
+  const [savedPrompts, setSavedPrompts] = useState([]);
+  const [finalPromptForDisplay, setFinalPromptForDisplay] = useState(null);
+  const [extraActionData, setExtraActionData] = useState({});
+  const [postModalContent, setPostModalContent] = useState(null);
+  const [isCopied, setIsCopied] = useState(false);
+  const [audioModalConfig, setAudioModalConfig] = useState({ isOpen: false, imageIndex: null });
+  const [recordingState, setRecordingState] = useState('idle');
+  const mediaRecorderRef = useRef(null);
+  const [upgradeModalState, setUpgradeModalState] = useState({ isOpen: false, imageUrl: null, featureName: '' });
+  
+  const t = translations[language];
+  const isPro = userStatus.plan !== 'free';
+
+  const referencePartners = [
+      { name: 'Lohnder SC', logo: lohnderScLogo }
+  ];
+
+  useEffect(() => {
+    try {
+      const storedLang = localStorage.getItem('appLanguage');
+      if (storedLang && translations[storedLang]) {
+        setLanguage(storedLang);
+      }
+      const storedPrompts = localStorage.getItem('savedPrompts');
+      if (storedPrompts) {
+        setSavedPrompts(JSON.parse(storedPrompts));
+      }
+      const storedStatus = localStorage.getItem('userStatus');
+      if (storedStatus) {
+        setUserStatus(JSON.parse(storedStatus));
+      }
+    } catch (e) {
+      console.error("Initialization error from localStorage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Dieser Effekt prüft auf eine erfolgreiche Zahlung und zeigt eine Nachricht.
+    const query = new URLSearchParams(window.location.search);
+    if (query.has('payment_success')) {
+        alert(t.upgradeAlert('pro')); // Generische Erfolgsmeldung
+        // Bereinigen Sie die URL, damit die Meldung bei einem Refresh nicht erneut angezeigt wird.
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [t]);
+
+
+   useEffect(() => {
+    try {
+        localStorage.setItem('appLanguage', language);
+    } catch (e) { console.error("Failed to save language to localStorage", e); }
+  }, [language]);
+
+  useEffect(() => {
+    try {
+        localStorage.setItem('savedPrompts', JSON.stringify(savedPrompts));
+    } catch(e) { console.error("Failed to save prompts to localStorage", e); }
+  }, [savedPrompts]);
+
+  useEffect(() => {
+    try {
+        localStorage.setItem('userStatus', JSON.stringify(userStatus));
+    } catch(e) { console.error("Failed to save user status to localStorage", e); }
+  }, [userStatus]);
+
+  useEffect(() => {
+    if (titleClickCount > 0) {
+      const timer = setTimeout(() => setTitleClickCount(0), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [titleClickCount]);
+
+  useEffect(() => {
+    const activeModal = isImprintModalOpen || isPrivacyModalOpen || isLoginModalOpen || !!enhancedPreviewUrl || !!postModalContent || audioModalConfig.isOpen || upgradeModalState.isOpen;
+    if (!activeModal) return;
+
+    let modalSelector = '.modal-content';
+    if (enhancedPreviewUrl) modalSelector = '.enhanced-preview-modal-content';
+    else if (upgradeModalState.isOpen) modalSelector = '.upgrade-modal-content';
+    
+    const modalElement = document.querySelector(modalSelector);
+    if (!modalElement) return;
+
+    const focusableElements = modalElement.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const triggerElement = document.activeElement;
+    firstElement.focus();
+    const handleTabKeyPress = (e) => {
+        if (e.key === 'Tab') {
+            if (e.shiftKey) {
+                if (document.activeElement === firstElement) { e.preventDefault(); lastElement.focus(); }
+            } else {
+                if (document.activeElement === lastElement) { e.preventDefault(); firstElement.focus(); }
+            }
+        }
+    };
+    modalElement.addEventListener('keydown', handleTabKeyPress);
+    return () => {
+        if (modalElement) {
+          modalElement.removeEventListener('keydown', handleTabKeyPress);
+        }
+        triggerElement?.focus();
+    };
+}, [isImprintModalOpen, isPrivacyModalOpen, isLoginModalOpen, enhancedPreviewUrl, postModalContent, audioModalConfig.isOpen, upgradeModalState.isOpen]);
+
+  const handleTitleClick = () => {
+    const newCount = titleClickCount + 1;
+    setTitleClickCount(newCount);
+    if (newCount >= 5) {
+      setUserStatus(prev => ({ ...prev, plan: 'half-yearly', generationsUsed: 0 }));
+      alert('Developer mode activated: Unlimited generations unlocked!');
+      setTitleClickCount(0);
+    }
+  };
+
+  const handleUpgrade = (plan) => {
+     const url = STRIPE_PAYMENT_LINKS[plan];
+     // Fügt einen Parameter hinzu, damit wir nach der Rückkehr eine Nachricht anzeigen können.
+     const newUrl = new URL(url);
+     newUrl.searchParams.set('success_url', `${window.location.origin}?payment_success=true`);
+     newUrl.searchParams.set('cancel_url', window.location.origin);
+     window.location.href = newUrl.toString();
+  };
+
+  const handleLogout = useCallback(() => {
+    const proPlanToRemember = userStatus.plan !== 'free' ? userStatus.plan : userStatus.proPlan;
+    setUserStatus({ plan: 'free', generationsUsed: 0, newsletterOptIn: userStatus.newsletterOptIn, proPlan: proPlanToRemember });
+  }, [userStatus]);
+
+  const handleLogin = useCallback(() => {
+    if (loginEmail.toLowerCase() === 'pro@user.com') {
+        const restoredPlan = userStatus.proPlan || 'monthly';
+        setUserStatus(prev => ({ ...prev, plan: restoredPlan, generationsUsed: 0 }));
+        setIsLoginModalOpen(false);
+        setLoginEmail('');
+        setLoginError(null);
+    } else {
+        setLoginError(t.loginError);
+    }
+  }, [loginEmail, userStatus.proPlan, t]);
+    
+  const handleNewsletterChange = useCallback((e) => {
+    setUserStatus(prev => ({ ...prev, newsletterOptIn: e.target.checked }));
+  }, []);
+
+  const handleLogoChange = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError(t.errorSelectImageFile); return; }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const result = event.target?.result;
+        if (typeof result === 'string') {
+            const mimeType = result.substring(5, result.indexOf(';'));
+            const b64 = result.substring(result.indexOf(',') + 1);
+            setLogoImage({ b64, mimeType });
+            setLogoFileName(file.name);
+            setError(null);
+        } else { setError(t.errorReadFile); }
+    };
+    reader.onerror = () => setError(t.errorReadFile);
+    reader.readAsDataURL(file);
+  }, [t]);
+
+  const handleRemoveLogo = useCallback(() => {
+      setLogoImage(null);
+      setLogoFileName(null);
+      const fileInput = document.getElementById('logo-upload');
+      if (fileInput) fileInput.value = '';
+  }, []);
+
+  const handleGenerateClick = useCallback(async () => {
+    if (!process.env.API_KEY) { setError(t.errorApiKeyNeeded); return; }
+    if (!prompt) { setError(t.errorEnterDescription); return; }
+
+    const currentLimit = PLAN_LIMITS[userStatus.plan];
+    if (userStatus.generationsUsed >= currentLimit) { setError(t.errorQuotaExceeded); return; }
+    
+    setIsLoading(true);
+    setError(null);
+    setGeneratedImages(null);
+    setGenerationContext(null);
+    setFinalPromptForDisplay(null);
+    setExtraActionData({});
+    setLoadingMessage(t.loadingGenerateImages);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      let finalPrompt = '';
+
+      if (logoImage) {
+        setLoadingMessage(t.loadingCheckDescription);
+        
+        const imagePart = { inlineData: { mimeType: logoImage.mimeType, data: logoImage.b64 } };
+        let promptContext = '';
+        let parts = [];
+        
+        if (imageType === 'logo') {
+            promptContext = `Based on the user's request, create a prompt to modernize the provided logo. The final prompt should be a detailed instruction for an image generation AI, focusing on creating a clean, professional, vector-style redesigned logo suitable for branding. Keywords: "modern design", "minimalist", "vector art". User's request: "${prompt}"`;
+            parts = [{text: "Analyze this logo image."}, imagePart, {text: promptContext}];
+        } else {
+             promptContext = `Analyze the user's request and the provided logo. Create a new, highly detailed English prompt for an image generation AI. The new prompt MUST describe a dynamic scene based on the user's text, and it MUST also incorporate elements from the provided logo (e.g., its style, colors, subject matter, or the logo itself placed naturally on clothing or an object). The resulting prompt should be rich in sensory details and include keywords like 'photorealistic', 'dynamic action', 'cinematic lighting', and 'ultra high quality' to guide the image generation AI. Do not add any preamble or explanation. Output ONLY the final, ready-to-use prompt. User's request: "${prompt}"`;
+             parts = [{text: promptContext}, imagePart];
+        }
+
+        const enhancedPromptResponse = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: parts } });
+        if (!enhancedPromptResponse.text) throw new Error(t.errorCouldNotGenerate);
+        finalPrompt = enhancedPromptResponse.text;
+        setLoadingMessage(t.loadingGenerateImages);
+      } else {
+        if (imageType === 'logo') {
+            finalPrompt = `Create a professional, high-quality vector logo for: "${prompt}". Style: clean, modern, iconic, minimalist, memorable, and easily scalable. The logo should be perfectly centered on a solid, neutral background (e.g., white or light gray). Crucially, do not add any text other than what is explicitly requested in the prompt. Avoid shadows, complex gradients, or photorealistic elements. The result should be a crisp, professional graphic suitable for branding.`;
+        } else if (imageType === 'announcement') {
+            finalPrompt = `Create a dramatic, high-impact background image suitable for a sports match announcement poster. The scene should be: "${prompt}". The composition must be professional, with a clear area of negative space or a less detailed background section where text overlays for team names, date, and time can be clearly placed. Style: epic, cinematic lighting, ultra high quality, 8K. Do not include any text in the image itself.`;
+        } else if (imageType === 'image') {
+            finalPrompt = `Photorealistic sports action photography of: ${prompt}. Style: cinematic, dynamic composition, dramatic lighting, ultra high quality, 8K, sharp focus. The image should be vibrant and emotionally impactful.`;
+        } else { // header
+            finalPrompt = `A professional, ultra-high-resolution website header image (8K) with a cinematic feel. The theme is: ${prompt}. The style must be clean, modern, and visually stunning, with careful consideration for negative space where text or a logo could be placed. Composition should be balanced and professional.`;
+        }
+      }
+      
+      setFinalPromptForDisplay(finalPrompt);
+
+      const response = await ai.models.generateImages({
+        model: 'imagen-3.0-generate-002',
+        prompt: finalPrompt,
+        config: {
+          numberOfImages: isPro ? 5 : 3,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: aspectRatio,
+        },
+      });
+
+      if (response.generatedImages && response.generatedImages.length > 0) {
+        const imageUrls = response.generatedImages.map(img => `data:image/jpeg;base64,${img.image.imageBytes}`);
+        setGeneratedImages(imageUrls);
+        setUserStatus(prev => ({ ...prev, generationsUsed: prev.generationsUsed + 1 }));
+        setGenerationContext({ imageType, aspectRatio });
+      } else {
+        setError(t.errorCouldNotGenerate);
+      }
+    } catch (e) {
+      console.error(e);
+      let specificMessage = t.errorUnknown;
+      if (e && typeof e === 'object' && 'message' in e) specificMessage = e.message;
+      else if (typeof e === 'string') specificMessage = e;
+      setError(`${t.errorGeneralPrefix}${specificMessage}`);
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  }, [prompt, userStatus, logoImage, imageType, aspectRatio, t, isPro]);
+
+  const handleActionClick = (action, featureName) => {
+    if (isPro) {
+        action();
+    } else {
+        setUpgradeModalState({ isOpen: true, imageUrl: null, featureName });
+    }
+  };
+
+  const handleDownloadClick = useCallback((imageUrl, index) => {
+    if (!isPro) {
+        setUpgradeModalState({ isOpen: true, imageUrl, featureName: t.downloadButton});
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `sportspark-ai-grafik-${index + 1}.jpeg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [isPro, t.downloadButton]);
+    
+  const generationsRemaining = Math.max(0, PLAN_LIMITS[userStatus.plan] - userStatus.generationsUsed);
+  const canGenerate = generationsRemaining > 0;
+  
+  const getPlaceholder = useCallback(() => {
+    switch(imageType) {
+        case 'header': return t.promptPlaceholderHeader;
+        case 'logo': return t.promptPlaceholderLogo;
+        case 'announcement': return t.promptPlaceholderAnnouncement;
+        case 'image': default: return t.promptPlaceholderImage;
+    }
+  }, [imageType, t]);
+
+  const handleImageTypeChange = useCallback((newType) => {
+    setImageType(newType);
+    if (newType === 'image') setAspectRatio('1:1');
+    else if (newType === 'announcement') setAspectRatio('9:16');
+  }, []);
+
+  const handleSavePrompt = useCallback(() => {
+    const name = window.prompt(t.templateNameRequest);
+    if (name && prompt) setSavedPrompts(prev => [...prev, { name, text: prompt }]);
+  }, [prompt, t.templateNameRequest]);
+
+  const handleLoadPrompt = useCallback((text) => setPrompt(text), []);
+  const handleDeletePrompt = useCallback((indexToDelete) => setSavedPrompts(prev => prev.filter((_, index) => index !== indexToDelete)), []);
+
+  const openImprintModal = useCallback(() => setIsImprintModalOpen(true), []);
+  const closeImprintModal = useCallback(() => setIsImprintModalOpen(false), []);
+  const openPrivacyModal = useCallback(() => setIsPrivacyModalOpen(true), []);
+  const closePrivacyModal = useCallback(() => setIsPrivacyModalOpen(false), []);
+  const closeEnhancedPreview = useCallback(() => setEnhancedPreviewUrl(null), []);
+
+  const handleGeneratePost = useCallback(async (index) => {
+    if (!isPro) { setUpgradeModalState({ isOpen: true, imageUrl: generatedImages?.[index] || null, featureName: t.generatePostText }); return; }
+    if (extraActionData[index]?.post) { setPostModalContent(extraActionData[index].post); return; }
+    
+    setExtraActionData(prev => ({...prev, [index]: {...prev[index], postLoading: true}}));
+    setError(null);
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const langName = languageNameMap[language] || 'English';
+        const postPrompt = `Based on the following image description, write a short, exciting social media post in ${langName} with emojis and relevant hashtags. Description: "${finalPromptForDisplay}"`;
+        
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: postPrompt });
+        const postText = response.text;
+        if (!postText) throw new Error('Empty response from AI.');
+
+        setExtraActionData(prev => ({...prev, [index]: {...prev[index], post: postText, postLoading: false}}));
+        setPostModalContent(postText);
+    } catch (e) {
+        console.error(e);
+        setError(t.errorCouldNotGenerate);
+        setExtraActionData(prev => ({...prev, [index]: {...prev[index], postLoading: false}}));
+    }
+  }, [isPro, generatedImages, extraActionData, finalPromptForDisplay, language, t]);
+
+  const fetchAudioScript = useCallback(async (index) => {
+    if (!finalPromptForDisplay) return;
+
+    setExtraActionData(prev => ({ ...prev, [index]: { ...prev[index], scriptLoading: true } }));
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const langName = languageNameMap[language] || 'English';
+        const audioPrompt = `You are an excited sports announcer. Based on the following image description, write a short, dramatic, 1-2 sentence commentary in ${langName} as if you are seeing it live. Do not add any preamble or explanation. Description: "${finalPromptForDisplay}"`;
+
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: audioPrompt });
+        const scriptText = response.text;
+        if (!scriptText) throw new Error('Empty response from AI.');
+
+        setExtraActionData(prev => ({ ...prev, [index]: { ...prev[index], audioScript: scriptText, scriptLoading: false } }));
+    } catch (e) {
+        console.error(e);
+        setError(t.errorCouldNotGenerate);
+        setExtraActionData(prev => ({ ...prev, [index]: { ...prev[index], audioScript: t.audioGenerationError, scriptLoading: false } }));
+    }
+  }, [finalPromptForDisplay, language, t]);
+
+  const handleOpenAudioModal = useCallback(async (index) => {
+    if (!isPro) { setUpgradeModalState({ isOpen: true, imageUrl: generatedImages?.[index] || null, featureName: t.generateAudioCommentary }); return; }
+    setAudioModalConfig({ isOpen: true, imageIndex: index });
+    if (!extraActionData[index]?.audioScript) {
+        await fetchAudioScript(index);
+    }
+  }, [isPro, generatedImages, extraActionData, fetchAudioScript, t.generateAudioCommentary]);
+
+  const handleCopyToClipboard = useCallback(() => {
+    if (postModalContent) {
+        navigator.clipboard.writeText(postModalContent).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000);
+        });
+    }
+  }, [postModalContent]);
+
+  const closeAudioModal = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+    }
+    setAudioModalConfig({ isOpen: false, imageIndex: null });
+    setRecordingState('idle');
+  }, []);
+
+  const handleImageClick = useCallback((imageUrl) => {
+    if (isPro) setEnhancedPreviewUrl(imageUrl);
+    else setUpgradeModalState({ isOpen: true, imageUrl: imageUrl, featureName: t.clickForPreview });
+  }, [isPro, t.clickForPreview]);
+
+  const handleAudioFileChange = useCallback((e, index) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('audio/')) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const url = event.target?.result;
+        setExtraActionData(prev => ({...prev, [index]: {...prev[index], uploadedAudioUrl: url}}));
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleStartRecording = async (index) => {
+    setRecordingState('idle');
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        const audioChunks = [];
+        
+        mediaRecorderRef.current.ondataavailable = (event) => audioChunks.push(event.data);
+        mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            setExtraActionData(prev => ({...prev, [index]: {...prev[index], uploadedAudioUrl: audioUrl}}));
+            setRecordingState('idle');
+            stream.getTracks().forEach(track => track.stop()); // Turn off mic
+        };
+        
+        mediaRecorderRef.current.start();
+        setRecordingState('recording');
+    } catch (err) {
+        console.error("Microphone access denied:", err);
+        setRecordingState('permissionDenied');
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+  };
+  
+  const handleRemoveAudio = (index) => {
+    setExtraActionData(prev => ({...prev, [index]: {...prev[index], uploadedAudioUrl: undefined }}));
+  };
+
+  const currentAudioScript = audioModalConfig.imageIndex !== null ? extraActionData[audioModalConfig.imageIndex]?.audioScript : '';
+  const currentAudioUrl = audioModalConfig.imageIndex !== null ? extraActionData[audioModalConfig.imageIndex]?.uploadedAudioUrl : undefined;
+  const isScriptLoading = audioModalConfig.imageIndex !== null ? extraActionData[audioModalConfig.imageIndex]?.scriptLoading : false;
+
+  return (
+    <div className="app-container">
+      <EnhancedPreviewModal imageUrl={enhancedPreviewUrl} imageType={generationContext?.imageType} onClose={closeEnhancedPreview} t={t} />
+      <Modal isOpen={isImprintModalOpen} onClose={closeImprintModal} title={t.imprintTitle}><ImprintContent t={t} /></Modal>
+      <Modal isOpen={isPrivacyModalOpen} onClose={closePrivacyModal} title={t.privacyTitle}><PrivacyContent t={t} /></Modal>
+      
+       <Modal 
+          isOpen={upgradeModalState.isOpen}
+          onClose={() => setUpgradeModalState({ isOpen: false, imageUrl: null, featureName: '' })}
+          title={upgradeModalState.imageUrl ? t.upgradeModalTitle : t.proFeature}
+          customClass="upgrade-modal-content"
+        >
+          <div className="upgrade-modal-body">
+              {upgradeModalState.imageUrl && <img src={upgradeModalState.imageUrl} alt={t.imagePreviewAlt} className="upgrade-modal-preview-img" />}
+              <p>{t.upgradeModalBody(upgradeModalState.featureName)}</p>
+              <p className="upgrade-modal-subtext">{t.upgradeModalSubtext}</p>
+              <a href={STRIPE_PAYMENT_LINKS.monthly} className="upgrade-button" style={{textDecoration: 'none'}}>{t.upgradeModalButtonText}</a>
+          </div>
+      </Modal>
+
+      <Modal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} title={t.loginTitle}>
+        <div className="login-modal-body">
+            <p>{t.loginPrompt}</p>
+            <input 
+                type="email" 
+                className="login-input" 
+                value={loginEmail} 
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="pro@user.com"
+            />
+            {loginError && <p className="error-message">{loginError}</p>}
+            <button className="login-button" onClick={handleLogin}>{t.loginButton}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!postModalContent} onClose={() => setPostModalContent(null)} title={t.postModalTitle}>
+         <div className="post-modal-body">
+            <pre>{postModalContent}</pre>
+            <button className="copy-button" onClick={handleCopyToClipboard} data-copied={isCopied}>
+                <CopyIcon />{isCopied ? t.copied : t.copyToClipboard}
+            </button>
+         </div>
+      </Modal>
+
+      <Modal isOpen={audioModalConfig.isOpen} onClose={closeAudioModal} title={t.generateAudioCommentary}>
+         <div className="audio-modal-body">
+            {isScriptLoading ? <div className="loader" /> : (
+                <>
+                    <p className="audio-modal-hint">{t.audioFromScript}</p>
+                    <textarea 
+                        id="commentary-text" className="audio-modal-textarea" rows={4}
+                        value={currentAudioScript || ''}
+                        readOnly
+                        placeholder={t.loadingLabel}
+                    />
+                    <button className="generate-ai-text-button" onClick={() => fetchAudioScript(audioModalConfig.imageIndex)} disabled={isScriptLoading}>
+                        {t.generateAiText}
+                    </button>
+                    
+                    <div className="audio-actions-container">
+                        {currentAudioUrl ? (
+                            <div className="uploaded-audio-container">
+                                <span className="audio-modal-label">{t.uploadedAudioLabel}</span>
+                                <audio controls src={currentAudioUrl}></audio>
+                                <button className="remove-audio-button" onClick={() => handleRemoveAudio(audioModalConfig.imageIndex)}>&times; {t.removeUploadedAudio}</button>
+                            </div>
+                        ) : (
+                           <div className="recording-controls">
+                                <input type="file" id="audio-upload" className="file-input-hidden" accept="audio/*" onChange={(e) => handleAudioFileChange(e, audioModalConfig.imageIndex)} />
+                                <label htmlFor="audio-upload" className="file-input-label audio-upload-label">{t.uploadAudio}</label>
+                                
+                                <div className="or-divider"><span>{t.recordingOr}</span></div>
+
+                                {recordingState === 'recording' ? (
+                                    <button className="record-button stop-button" onClick={handleStopRecording}>
+                                        <StopIcon /> {t.stopRecording}
+                                        <span className="recording-indicator" />
+                                    </button>
+                                ) : (
+                                    <button className="record-button" onClick={() => handleStartRecording(audioModalConfig.imageIndex)} disabled={recordingState !== 'idle'}>
+                                       <RecordIcon /> {t.recordAudio}
+                                    </button>
+                                )}
+                           </div>
+                        )}
+                    </div>
+                     {recordingState === 'permissionDenied' && <p className="error-message">{t.micPermissionDenied}</p>}
+                </>
+            )}
+         </div>
+      </Modal>
+
+      <header>
+          <div className="header-content">
+              <h1 className="app-title" onClick={handleTitleClick}>{t.appTitle}</h1>
+              <p className="app-subtitle">{t.appSubtitle}</p>
+          </div>
+          <div className="language-switcher">
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label={t.languageSelectorLabel}>
+                  <option value="de">Deutsch</option>
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="pl">Polski</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="it">Italiano</option>
+                  <option value="ja">日本語</option>
+                  <option value="zh">中文</option>
+              </select>
+          </div>
+      </header>
+
+      <main>
+          <section className="controls-panel" aria-labelledby="controls-heading">
+              {isPro ? (
+                 <div className="account-panel">
+                    <h3>{t.welcomeBack}</h3>
+                    <div className="account-info">
+                        <span>{t.status}</span>
+                        <span className="pro-badge">{t.planNames[userStatus.plan]}</span>
+                    </div>
+                    {isFinite(generationsRemaining) && <p className="generations-counter">{t.generationsLeft(generationsRemaining, PLAN_LIMITS[userStatus.plan])}</p>}
+                     <p className="pro-perk">{isFinite(generationsRemaining) ? t.quotaResets(userStatus.plan) : t.unlimitedGenerations}</p>
+                     <div className="newsletter-opt-in">
+                        <input type="checkbox" id="newsletter-checkbox-pro" checked={!!userStatus.newsletterOptIn} onChange={handleNewsletterChange} />
+                        <label htmlFor="newsletter-checkbox-pro">{t.newsletterOptIn}</label>
+                    </div>
+                    <button className="logout-button" onClick={handleLogout}>{t.logout}</button>
+                 </div>
+              ) : (
+                <div className="account-panel">
+                    <h3>{t.upgradeToPro}</h3>
+                    {generationsRemaining > 0 ? (
+                        <p className="generations-counter">{t.freeGenerationsLeft(generationsRemaining, PLAN_LIMITS.free)}</p>
+                    ) : (
+                        <p className="generations-counter error-message">{t.freeQuotaUsed}</p>
+                    )}
+                    <ul className="upgrade-features">
+                       {t.upgradeFeatures.map((feature, index) => <li key={index}>{feature}</li>)}
+                    </ul>
+                    <div className="pricing-options">
+                        <div className="pricing-tier">
+                            <h4>{t.planNames.weekly}</h4><p className="price">4,99 €</p><p className="price-vat">{t.vatIncluded}</p>
+                            <p className="period">{t.imagesPerWeek(30)}</p>
+                            <a href={STRIPE_PAYMENT_LINKS.weekly} className="upgrade-button" style={{textDecoration: 'none'}}>{t.select}</a>
+                        </div>
+                        <div className="pricing-tier popular">
+                            <span className="popular-badge">{t.popular}</span>
+                            <h4>{t.planNames.monthly}</h4><p className="price">9,99 €</p><p className="price-vat">{t.vatIncluded}</p>
+                            <p className="period">{t.imagesPerMonth(100)}</p>
+                            <a href={STRIPE_PAYMENT_LINKS.monthly} className="upgrade-button" style={{textDecoration: 'none'}}>{t.select}</a>
+                        </div>
+                        <div className="pricing-tier">
+                            <h4>{t.planNames['half-yearly']}</h4><p className="price">49,99 €</p><p className="price-vat">{t.vatIncluded}</p>
+                            <p className="period">{t.unlimitedImages}</p>
+                            <a href={STRIPE_PAYMENT_LINKS['half-yearly']} className="upgrade-button" style={{textDecoration: 'none'}}>{t.select}</a>
+                        </div>
+                    </div>
+                    <p className="login-prompt">{t.alreadyAccount} <a href="#" onClick={(e) => {e.preventDefault(); setIsLoginModalOpen(true)}}>{t.loginHere}</a></p>
+                     <div className="newsletter-opt-in">
+                        <input type="checkbox" id="newsletter-checkbox-free" checked={!!userStatus.newsletterOptIn} onChange={handleNewsletterChange} />
+                        <label htmlFor="newsletter-checkbox-free">{t.newsletterOptIn}</label>
+                    </div>
+                </div>
+              )}
+              
+              <div className="control-group">
+                  <h2>{t.step1}</h2>
+                  <div className="image-type-selector">
+                      <label><input type="radio" name="imageType" value="image" checked={imageType === 'image'} onChange={() => handleImageTypeChange('image')} />{t.imageTypeImage}</label>
+                       <label><input type="radio" name="imageType" value="announcement" checked={imageType === 'announcement'} onChange={() => handleImageTypeChange('announcement')} />{t.imageTypeAnnouncement}</label>
+                      <label><input type="radio" name="imageType" value="header" checked={imageType === 'header'} onChange={() => handleImageTypeChange('header')} />{t.imageTypeHeader}</label>
+                      <label><input type="radio" name="imageType" value="logo" checked={imageType === 'logo'} onChange={() => handleImageTypeChange('logo')} />{t.imageTypeLogo}</label>
+                  </div>
+                  {imageType !== 'image' && imageType !== 'announcement' && <div className="aspect-ratio-selector">
+                        <label htmlFor="aspect-ratio">{t.aspectRatioLabel}</label>
+                        <select id="aspect-ratio" value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)}>
+                            <option value="1:1">{t.aspectRatioSquare}</option><option value="16:9">{t.aspectRatioWide}</option>
+                            <option value="9:16">{t.aspectRatioStory}</option><option value="4:3">{t.aspectRatioLandscape}</option>
+                            <option value="3:4">{t.aspectRatioPortrait}</option>
+                        </select>
+                  </div>}
+                  <textarea id="prompt" className="prompt-input" rows={4} value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={getPlaceholder()} aria-label={t.promptLabel}/>
+                  <p className="legal-disclaimer">{t.legalDisclaimer}</p>
+                  <button onClick={() => handleActionClick(handleSavePrompt, t.saveTemplate)} className="save-template-button" disabled={!prompt} title={!isPro ? t.saveTemplateProFeature : ''}>
+                      {t.saveTemplate}
+                  </button>
+              </div>
+
+              <div className="control-group">
+                  <h2>{t.myTemplatesTitle}</h2>
+                  <div className="saved-prompts-container">
+                      {savedPrompts.length > 0 ? (
+                          <ul className="saved-prompts-list">
+                              {savedPrompts.map((p, index) => (
+                                  <li key={index} className="saved-prompt-item">
+                                      <span className="saved-prompt-name" onClick={() => handleLoadPrompt(p.text)} title={p.text}>{p.name}</span>
+                                      <button onClick={() => handleDeletePrompt(index)} className="delete-prompt-button" aria-label={t.deleteTemplate}>&times;</button>
+                                  </li>
+                              ))}
+                          </ul>
+                      ) : <p className="no-saved-prompts">{t.noTemplatesSaved}</p>}
+                  </div>
+              </div>
+    
+              <div className="control-group">
+                <h2>{t.step2}</h2>
+                {logoImage ? (
+                    <div className="logo-preview-container">
+                        <img src={`data:${logoImage.mimeType};base64,${logoImage.b64}`} alt={t.logoPreviewAlt} className="logo-preview-img" />
+                        <span className="logo-preview-name">{logoFileName}</span>
+                        <button onClick={handleRemoveLogo} className="remove-logo-button" aria-label={t.removeLogoLabel}>&times;</button>
+                    </div>
+                ) : (<>
+                    <input type="file" id="logo-upload" className="file-input-hidden" onChange={handleLogoChange} accept="image/*" />
+                    <label htmlFor="logo-upload" className="file-input-label">{t.selectLogo}</label>
+                </>)}
+              </div>
+              
+              <button className="generate-button" onClick={handleGenerateClick} disabled={isLoading || !canGenerate}>
+                {isLoading ? <span className="spinner" /> : t.generateButton}
+              </button>
+              {isLoading && <p className="loading-message">{loadingMessage}</p>}
+          </section>
+    
+          <section className="display-panel" aria-live="polite">
+              {isLoading ? <div className="loader" /> : error ? <p className="error-message">{error}</p> : generatedImages ? (
+                <>
+                  <div className="results-info">
+                      <h3>{t.resultsTitle}</h3>
+                      {finalPromptForDisplay && <p className="final-prompt-display"><strong>{t.finalPromptLabel}</strong> {finalPromptForDisplay}</p>}
+                      <p className="refine-text-hint">{t.refineText}</p>
+                  </div>
+                  <div className="generated-images-grid">
+                    {generatedImages.map((imgSrc, index) => (
+                      <div key={index} className="generated-image-container" onClick={() => handleImageClick(imgSrc)}>
+                        <img src={imgSrc} alt={`${t.generatedImageAlt} ${index + 1}`} className="generated-image" style={{ aspectRatio: generationContext?.aspectRatio || '1:1' }}/>
+                        <div className="image-overlay">
+                          <span className="image-overlay-text">{t.clickForPreview}</span>
+                           <div className="image-actions-overlay">
+                                <button className="action-button" title={isPro ? t.generatePostText : t.upgradeToUnlockFeatures} onClick={(e) => { e.stopPropagation(); handleGeneratePost(index); }} disabled={extraActionData[index]?.postLoading}>
+                                    {extraActionData[index]?.postLoading ? <span className="spinner" /> : <TextIcon />}
+                                </button>
+                                <button className="action-button" title={isPro ? t.generateAudioCommentary : t.upgradeToUnlockFeatures} onClick={(e) => { e.stopPropagation(); handleOpenAudioModal(index); }}>
+                                    {extraActionData[index]?.scriptLoading ? <span className="spinner" /> : <AudioIcon />}
+                                </button>
+                                <button className="download-button" onClick={(e) => { e.stopPropagation(); handleDownloadClick(imgSrc, index); }} title={isPro ? t.downloadButton : t.upgradeToUnlockFeatures}>
+                                    {t.downloadButton}
+                                </button>
+                           </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="placeholder-container">
+                  <SparkleIcon /><p className="placeholder-text">{t.placeholderText}</p>
+                </div>
+              )}
+          </section>
+      </main>
+
+      <section className="references-section" aria-labelledby="references-heading">
+          <h2 id="references-heading" className="references-title">{t.referencesTitle}</h2>
+          <div className="references-content">
+            <div className="references-grid">
+                {referencePartners.map((partner) => {
+                    const partnerLogo = <img src={partner.logo} alt={`${partner.name} Logo`} className="reference-logo-img" />;
+                    if (partner.url) {
+                      return (
+                        <a key={partner.name} href={partner.url} target="_blank" rel="noopener noreferrer" className="reference-logo-link" title={partner.name}>
+                          {partnerLogo}
+                        </a>
+                      );
+                    }
+                    return (
+                      <div key={partner.name} className="reference-logo-link" title={partner.name}>
+                          {partnerLogo}
+                      </div>
+                    );
+                })}
+            </div>
+            <a href="mailto:thomas.naujokat@feinemundart.com" className="sponsor-button">{t.becomeSponsor}</a>
+          </div>
+      </section>
+
+      <footer>
+          <p>&copy; {new Date().getFullYear()} SportSpark.ai. {t.allRightsReserved}</p>
+          <nav>
+              <a href="#" onClick={(e) => { e.preventDefault(); openImprintModal(); }}>{t.imprintTitle}</a>
+              <a href="mailto:thomas.naujokat@feinemundart.com">{t.supportTitle}</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); openPrivacyModal(); }}>{t.privacyTitle}</a>
+          </nav>
+          <p className="version-number">Version 1.5.0</p>
+      </footer>
+    </div>
+  );
+};
+
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
+}
+</script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

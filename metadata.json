@@ -1,0 +1,8 @@
+{
+  "name": "SportSpark.ai: KI Sportbild-Generator",
+  "description": "Entfache deine Kreativität mit SportSpark.ai. Erstelle einzigartige Sportgrafiken, Poster und Logos mit KI. Schnell, einfach und professionell.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
