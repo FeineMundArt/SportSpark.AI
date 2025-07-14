@@ -1,1 +1,9 @@
-
+"name": "sportspark-ai",
+  "version": "1.5.0",
+  "description": "Entfache deine Kreativität mit SportSpark.ai. Erstelle einzigartige Sportgrafiken, Poster und Logos mit KI. Schnell, einfach und professionell.",
+  "private": true,
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@google/genai": "^1.8.0"
+  }
